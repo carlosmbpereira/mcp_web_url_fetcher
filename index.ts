@@ -4,7 +4,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import * as cheerio from "cheerio";
+// cheerio removed: returning raw HTML instead of cleaned text
 
 const server = new Server(
   {
@@ -22,12 +22,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
-        name: "fetch_web_content",
-        description: "Accesses a URL and returns the text-based content.",
+        name: "get_web_content",
+      description: "Accesses a URL and returns the page text with scripts and HTML formatting removed.",
         inputSchema: {
           type: "object",
           properties: {
-            url: { type: "string", description: "The URL to scrape" },
+            url: { type: "string", description: "The URL to fetch" },
           },
           required: ["url"],
         },
@@ -37,7 +37,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 });
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  if (request.params.name === "fetch_web_content") {
+  if (request.params.name === "get_web_content") {
     const url = String(request.params.arguments?.url);
 
     try {
@@ -51,19 +51,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       const html = await response.text();
-      const $ = cheerio.load(html);
-      
-      // Cleanup DOM to minimize tokens
-      $("script, style, nav, footer, header, svg").remove();
-      
-      const cleanText = $("body")
-        .text()
-        .replace(/\s+/g, " ")
-        .trim()
-        .substring(0, 15000); // Increased limit slightly
 
+      // Remove <script> and <style> blocks first, then strip remaining HTML tags
+      // Finally collapse whitespace so the returned text is clean plain text.
+      const withoutScripts = html
+        .replace(/<script[\s\S]*?<\/script>/gi, "")
+        .replace(/<style[\s\S]*?<\/style>/gi, "");
+
+      // Keep remaining HTML tags but trim surrounding whitespace
+      const cleanedHtml = withoutScripts.trim();
+
+      // Return HTML with scripts/styles removed as content[0].text per request
       return {
-        content: [{ type: "text", text: cleanText }],
+        content: [{ type: "text", text: cleanedHtml }],
       };
     } catch (error: any) {
       return {
